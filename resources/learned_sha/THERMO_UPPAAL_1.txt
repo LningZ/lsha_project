@@ -1,0 +1,32 @@
+
+
+--OBSERVABLE EVENTS--
+
+h_0: on
+c_0: off
+
+
+--LEARNED DISTRIBUTIONS--
+
+D_0(-40.976417)
+D_1(99.999978)
+D_2(-41.260362)
+
+
+--FINAL OBSERVATION TABLE--
+
+            |ε        
+------------+---------
+h_0         |(f_1,D_0)
+h_0c_0      |(f_1,D_1)
+h_0c_0h_0   |(f_1,D_2)
+------------+---------
+h_0c_0h_0c_0|(f_1,D_1)
+------------+---------
+
+
+
+--PERFORMANCE DATA--
+
+SAMPLED TRACES:	4800
+RUNNING TIME:	0:08:49.615797

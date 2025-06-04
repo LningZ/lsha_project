@@ -3,6 +3,7 @@ from typing import List, Dict
 import matplotlib.pyplot as plt
 import numpy as np
 import scipy.stats as stats
+import time
 
 from sha_learning.domain.lshafeatures import Trace, TimedTrace, RealValuedVar, FlowCondition, ProbDistribution
 from sha_learning.domain.sigfeatures import ChangePoint, Event, SampledSignal, Timestamp, SignalPoint
@@ -56,6 +57,7 @@ class SystemUnderLearning:
         return chg_pts
 
     def process_data(self, path):
+        time.sleep(0.05)
         new_signals: List[SampledSignal] = self.parse_f(path)
         self.signals.append(new_signals)
 

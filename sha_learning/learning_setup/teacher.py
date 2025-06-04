@@ -5,6 +5,9 @@ from typing import List, Dict
 import numpy as np
 import scipy.stats as stats
 from tqdm import tqdm
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+
 
 from sha_learning.domain.lshafeatures import TimedTrace, FlowCondition, ProbDistribution, Trace
 from sha_learning.domain.obstable import ObsTable, Row, State
@@ -177,7 +180,8 @@ class Teacher:
             best_fit: ProbDistribution = None
 
             try:
-                for distr in self.hist:
+                #for distr in self.hist:
+                for distr in self.hist.copy():
                     value = self.hist[distr][0]
                     fits = [e_d for e_d in eligible_distributions if e_d.d_id == distr]
                     if value == unique_metrics[0] and len(fits) > 0:
@@ -205,12 +209,18 @@ class Teacher:
             # randomly distributed metrics for each segment
             metrics = [self.sul.get_ht_params(segment, flow) for segment in segments]
             metrics = [met for met in metrics if met is not None]
+            
+            if len(metrics) == 0:
+                LOGGER.warning(f"[ht_s_query] No valid metrics for word={word}, flow={flow}. Returning empty distribution.")
+                return ProbDistribution(len(self.distributions[0]), {'avg': 0.0})
+
             avg_metrics = sum(metrics) / len(metrics)
 
             min_dist, best_fit = 1000, None
 
             try:
-                for distr in self.hist:
+                #for distr in self.hist:
+                for distr in self.hist.copy():
                     if len(self.hist[distr]) == 0 or len(metrics) == 0:
                         continue
 
@@ -287,8 +297,6 @@ class Teacher:
         # (equivalent to multiple rows)
         amb_words: List[Trace] = []
         for i, row in tqdm(enumerate(upp_obs + low_obs)):
-            # if there are not enough observations of a word,
-            # it needs a refinement query
             s = S[i] if i < len(upp_obs) else lS[i - len(upp_obs)]
             for e_i, e in enumerate(table.get_E()):
                 if len(self.sul.get_segments(s + e)) < n_resample:
@@ -296,7 +304,7 @@ class Teacher:
 
             if not row.is_populated():
                 continue
-
+            
             # find equivalent rows
             eq_rows: List[Row] = []
             for (j, row_2) in enumerate(upp_obs):
@@ -312,18 +320,23 @@ class Teacher:
         #     suffixes = [w2 for w2 in amb_words if w2 != w and w2.startswith(w)]
         #     if len(suffixes) == 0:
         #         uq.append(w)
-
+       
         for word in tqdm(uq, total=len(uq)):
             LOGGER.info('Requesting new traces for {}'.format(str(word)))
             for e in table.get_E():
                 self.TG.set_word(word + e)
                 path = self.TG.get_traces(n_resample)
                 if path is not None:
-                    for sim in path:
-                        self.sul.process_data(sim)
+                    # Process the generated traces in parallel using process_data()
+                    with ThreadPoolExecutor(max_workers=4) as executor:
+                        futures = [executor.submit(self.sul.process_data, sim) for sim in path]
+                        for future in as_completed(futures):
+                            try:
+                                future.result()
+                            except Exception as e:
+                                print(f"[ref_query] Error processing sim: {e}")
                 else:
                     LOGGER.debug('!! An error occurred while generating traces !!')
-
     #############################################
     # COUNTEREXAMPLE QUERY:
     # looks for a counterexample to current obs. table

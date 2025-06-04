@@ -139,11 +139,11 @@ def parse_traces_sim(path: str):
 def parse_traces_uppaal(path: str):
     f = open(path, 'r')
     if CS_VERSION in [1, 2]:
-        variables = ['humanFatigue[currH - 1]', 'humanPositionX[currH - 1]',
-                     'amy.busy || amy.p_2', 'humanPositionY[currH - 1]']
+        variables = ['humanFatigue[0]', 'humanPositionX[0]',
+                     'amy.busy || amy.p_2', 'humanPositionY[0]']
     else:
-        variables = ['humanFatigue[currH - 1]', 'humanPositionX[currH - 1]',
-                     'amy.busy || amy.p_2 || amy.run || amy.p_4', 'humanPositionY[currH - 1]']
+        variables = ['humanFatigue[0]', 'humanPositionX[0]',
+                     'amy.busy || amy.p_2 || amy.run || amy.p_4', 'humanPositionY[0]']
     lines = f.readlines()
     split_indexes = [lines.index(k + ':\n') for k in variables]
     split_lines = [lines[i + 1:split_indexes[ind + 1]] for (ind, i) in enumerate(split_indexes) if

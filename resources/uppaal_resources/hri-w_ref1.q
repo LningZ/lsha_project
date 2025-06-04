@@ -1,1 +1,7 @@
-simulate[<=TAU; 20]{humanFatigue[currH-1], humanPositionX[currH-1], amy.busy or amy.p_2, humanPositionY[currH-1]}
+simulate[<=200] {
+  humanFatigue[0],
+  humanPositionX[0],
+  humanPositionY[0],
+  amy.busy,
+  amy.p_2
+}

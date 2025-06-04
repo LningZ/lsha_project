@@ -4,11 +4,11 @@ import random
 import subprocess
 from typing import List, Set, Dict
 
-import skg_main.skg_mgrs.connector_mgr as conn
-from skg_main.skg_mgrs.skg_reader import Skg_Reader
-from skg_main.skg_model.schema import Entity
-from skg_main.skg_model.schema import Timestamp as skg_Timestamp
-from skg_main.skg_model.semantics import EntityForest, EntityTree
+#import skg_main.skg_mgrs.connector_mgr as conn
+#from skg_main.skg_mgrs.skg_reader import Skg_Reader
+#from skg_main.skg_model.schema import Entity
+#from skg_main.skg_model.schema import Timestamp as skg_Timestamp
+#from skg_main.skg_model.semantics import EntityForest, EntityTree
 
 from sha_learning.domain.lshafeatures import Trace, Event
 from sha_learning.learning_setup.logger import Logger

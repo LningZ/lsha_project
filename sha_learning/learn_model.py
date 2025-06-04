@@ -6,7 +6,7 @@ from datetime import datetime
 
 import sha_learning.pltr.lsha_report as report
 import sha_learning.pltr.sha_pltr as ha_pltr
-from sha_learning.case_studies.auto_twin.sul_definition import getSUL
+#from sha_learning.case_studies.auto_twin.sul_definition import getSUL
 from sha_learning.case_studies.energy.sul_definition import energy_cs
 from sha_learning.case_studies.energy_made.sul_definition import energy_made_cs
 from sha_learning.case_studies.energy_sim.sul_definition import energy_sim_cs
@@ -54,7 +54,9 @@ elif CS == 'AUTO_TWIN':
 else:
     raise RuntimeError
 
-TEACHER = Teacher(SUL, pov=sys.argv[1], start_dt=sys.argv[2], end_dt=sys.argv[3])
+#TEACHER = Teacher(SUL, pov=sys.argv[1], start_dt=sys.argv[2], end_dt=sys.argv[3])
+TEACHER = Teacher(SUL)
+   
 
 long_traces = [Trace(events=[e]) for e in SUL.events]
 obs_table = ObsTable([], [Trace(events=[])], long_traces)
@@ -75,8 +77,8 @@ sha_source = graphviz_sha.source
 with open(HA_SAVE_PATH.format(os.getcwd()) + SHA_NAME + '_source.txt', 'w') as f:
     f.write(sha_source)
 
-if config['DEFAULT']['PLOT_DISTR'] == 'True' and config['LSHA PARAMETERS']['HT_QUERY_TYPE'] == 'S':
-    distr_hist(TEACHER.hist, SHA_NAME)
+#if config['DEFAULT']['PLOT_DISTR'] == 'True' and config['LSHA PARAMETERS']['HT_QUERY_TYPE'] == 'S':
+    #distr_hist(TEACHER.hist, SHA_NAME)
 
 report.save_data(TEACHER.symbols, TEACHER.distributions, LEARNER.obs_table,
                  len(TEACHER.signals), datetime.now() - startTime, SHA_NAME, events_labels_dict,

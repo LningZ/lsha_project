@@ -1,12 +1,22 @@
 import configparser
 import os
 from typing import List, Tuple, Dict
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from time import time 
+from time import perf_counter
+import copy
+import sys
+import time
+
+
 
 from sha_learning.domain.lshafeatures import State, FlowCondition, ProbDistribution
 from sha_learning.domain.obstable import ObsTable, Row, Trace
 from sha_learning.domain.shafeatures import StochasticHybridAutomaton, Location, Edge
 from sha_learning.learning_setup.logger import Logger
 from sha_learning.learning_setup.teacher import Teacher
+
+
 
 config = configparser.ConfigParser()
 config.read(
@@ -40,20 +50,72 @@ class Learner:
                     break
         return row
 
-    def fill_table(self):
-        upp_obs: List[Row] = self.obs_table.get_upper_observations()
-        for i, s_word in enumerate(self.obs_table.get_S()):
-            row: Row = Row(upp_obs[i].state.copy())
-            row = self.fill_row(row, i, s_word, upp_obs)
-            upp_obs[i] = row
-        self.obs_table.set_upper_observations(upp_obs)
+    def fill_table(self, max_workers: int = None):
+        """并行化版本的 fill_table / Parallelized fill_table."""
+        """Parallelized version of fill_table."""
+         # — Parallel filling of the upper part (S column) —
+        # —— 并行填充上半部（S 列） —— 
+        
+        upp_obs = self.obs_table.get_upper_observations()
+        s_list = self.obs_table.get_S()
 
-        low_obs: List[Row] = self.obs_table.get_lower_observations()
-        for i, s_word in enumerate(self.obs_table.get_low_S()):
-            row: Row = Row(low_obs[i].state.copy())
-            row = self.fill_row(row, i, s_word, low_obs)
-            low_obs[i] = row
+        # 并行提交所有行填充任务
+        # Submit all fill_row tasks in parallel
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_index = {
+                executor.submit(
+                    self.fill_row,
+                    Row(upp_obs[i].state.copy()),
+                    i,
+                    s_word,
+                    upp_obs
+                ): i
+                for i, s_word in enumerate(s_list)
+            }
+            # 按完成顺序回填结果
+             # Collect and write back results in the order of completion
+            for future in as_completed(future_to_index):
+                i = future_to_index[future]
+                upp_obs[i] = future.result()
+
+        self.obs_table.set_upper_observations(upp_obs)
+        
+        """
+        中：这一段在 ThreadPoolExecutor 里同时调度了所有 fill_row,  未来完成后依次填回表格。
+
+        En: This block uses a thread pool to simultaneously schedule all fill_row jobs, and as each one finishes it writes back the row.
+            
+        """
+
+        # —— 并行填充下半部（low_S 列） —— 
+        # — Parallel filling of the lower part (low_S column) —
+        low_obs = self.obs_table.get_lower_observations()
+        low_s_list = self.obs_table.get_low_S()
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_index = {
+                executor.submit(
+                    self.fill_row,
+                    Row(low_obs[i].state.copy()),
+                    i,
+                    s_word,
+                    low_obs
+                ): i
+                for i, s_word in enumerate(low_s_list)
+            }
+            for future in as_completed(future_to_index):
+                i = future_to_index[future]
+                low_obs[i] = future.result()
+
         self.obs_table.set_lower_observations(low_obs)
+        
+        """
+        中：和上半部完全对称，保证所有新增的下半部行也能并行填充。
+
+        En: Symmetric to the upper‐half, ensuring all lower‐half rows are filled in parallel.
+
+        """
+        
 
     def is_closed(self):
         upp_obs: List[Row] = self.obs_table.get_upper_observations()
@@ -158,6 +220,7 @@ class Learner:
         for s_i in range(len(low_obs)):
             low_obs[s_i].state.append(State([(None, None)]))
 
+
     def add_counterexample(self, counterexample: Trace):
         upp_obs = self.obs_table.get_upper_observations()
         low_obs = self.obs_table.get_lower_observations()
@@ -188,9 +251,38 @@ class Learner:
                     for j in range(len(self.obs_table.get_E())):
                         new_state.append(State([(None, None)]))
                     low_obs.append(Row(new_state))
+                    
+        # === 并行 simulate 所有新加入的 S trace ===
+        # === Simulate all newly added S traces in parallel ===
+        
+        # Split the counterexample into all prefix substrings, e.g., abc → [a], [a,b], [a,b,c]
+        new_prefixes = [Trace(counterexample[:i + 1]) for i in range(len(counterexample))]# 拆分 counterexample 为前缀子串，生成一个列表：如 abc → [a], [a,b], [a,b,c]
+       
+        # Get the current set S to avoid redundant simulation
+        existing_S = set(self.obs_table.get_S())  # 获取当前表格中已有的 S 集合，避免 simulate 重复行。
+
+        # Only simulate traces that were actually added into S
+        to_simulate = [tr for tr in new_prefixes if tr in existing_S]# 只对新加进来的那些前缀 trace（已经加入 S 中）做 simulate。
+
+
+        # Given a trace tr, find its index in S, clone the current row, 
+        # simulate it using fill_row(), and return the updated row
+        def simulate_and_fill(tr: Trace): # 定义一个函数：给定一个 trace tr，找到它在 S 中的 index，拿出对应的 row，simulate 一遍（用 fill_row()），然后返回 index 和新填好的 row。
+            j = self.obs_table.get_S().index(tr)
+            row = Row(upp_obs[j].state.copy())
+            filled_row = self.fill_row(row, j, tr, upp_obs)
+            return j, filled_row
+
+        with ThreadPoolExecutor() as executor:
+            # Use ThreadPoolExecutor to simulate each trace in parallel
+            results = executor.map(simulate_and_fill, to_simulate)   #使用 ThreadPoolExecutor，并行地执行 simulate_and_fill(tr)，每个 trace 会同时被 fill_row() 填表。
+
+        for j, row in results:
+            upp_obs[j] = row
 
         self.obs_table.set_upper_observations(upp_obs)
         self.obs_table.set_lower_observations(low_obs)
+
 
     def merge_loc(self, sha: StochasticHybridAutomaton, loc: Location,
                   event: str, loc_dic: Dict[Trace, str]):
@@ -237,6 +329,7 @@ class Learner:
                 LOGGER.warn('Location already removed.')
 
         return sha, True
+
 
     def run_lsha(self, debug_print=True, filter_empty=False):
         # Fill Observation Table with Answers to Queries (from TEACHER)

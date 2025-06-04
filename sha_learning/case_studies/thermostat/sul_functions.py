@@ -55,7 +55,11 @@ def parse_data(path: str):
     f = open(path, 'r')
     variables = ['t.ON', 'T_r', 'r.open']
     lines = f.readlines()
+    lines = [line.strip() + '\n' for line in lines]
+    
     split_indexes = [lines.index(k + ':\n') for k in variables]
+    #split_indexes = [next(i for i, line in enumerate(lines) if line.startswith(k + ':')) for k in variables]
+
     split_lines = [lines[i + 1:split_indexes[ind + 1]] for ind, i in enumerate(split_indexes) if
                    i != split_indexes[-1]]
     split_lines.append(lines[split_indexes[-1] + 1:len(lines)])
