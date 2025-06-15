@@ -6,7 +6,7 @@ import numpy as np
 import scipy.stats as stats
 from tqdm import tqdm
 from concurrent.futures import ThreadPoolExecutor, as_completed
-
+import threading
 
 
 from sha_learning.domain.lshafeatures import TimedTrace, FlowCondition, ProbDistribution, Trace
@@ -473,3 +473,213 @@ class Teacher:
                     return None
             else:
                 return None
+
+    def get_counterexample_SA(self, table: ObsTable):
+        LOGGER.info('Looking for counterexample (Strategy B)...')
+
+        # 当前 observation table 中的已知前缀集合 S 和 low_S
+         # S: known prefixes in the upper table; low_S: one-step-away candidates
+        S = table.get_S()
+        low_S = table.get_low_S()
+        
+        # 从 SUL（被学习系统）中获取所有 trace
+        # Get all available traces from the system under learning
+        traces: List[Trace] = self.sul.traces
+        not_counter: List[Trace] = []
+
+         # 一旦某线程找到 CE，就通过 found_event 通知其他线程终止
+        # Once a thread finds a CE, use this Event to stop the others
+        found_event = threading.Event()
+        
+        # 用于保护多线程下对共享结果的写入
+        # Lock to safely write to shared result from multiple threads
+        lock = threading.Lock()
+        
+        counterexample_result = [None]  
+
+        # Function executed by each thread
+        # 单个线程的任务函数：并行运行中每个线程都会执行此函数，处理分配给自己的 trace 子集
+        def check_trace_group(group):
+            for trace in group:
+                if found_event.is_set():
+                    return  # If another thread has already found a CE, stop immediately
+
+                # 遍历该 trace 的所有前缀（prefix），逐一测试是否为 CE
+                # For each prefix of this trace, test whether it is a counterexample
+                for prefix in trace.get_prefixes():
+                    if prefix in S or prefix in low_S or prefix in not_counter:# Skip if already seen or handled
+                        continue
+                    
+                    # Create a new observation row for this prefix
+                    new_row = Row([])
+                    for e_i, e_word in enumerate(table.get_E()):
+                        word = prefix + e_word
+                        
+                        # 模型和概率分布预测
+                        # Query model ID and distribution
+                        id_model = self.mi_query(word)
+                        id_distr = self.ht_query(word, id_model, save=False)
+                        if id_model is not None and id_distr is not None:
+                            new_row.state.append(State([(id_model, id_distr)]))
+                        else:
+                            new_row.state.append(State([(None, None)]))
+
+                    if new_row.is_populated():
+                        not_closed, not_ambiguous = self.not_closed(table, new_row)
+                        if not_closed:
+                            LOGGER.warn("!! MISSED NON-CLOSEDNESS !!")
+                            with lock:
+                                counterexample_result[0] = prefix
+                            found_event.set()
+                            return
+
+                        if not_ambiguous:
+                            not_consistent, event, s_word = self.not_consistent(table, S, low_S, new_row, prefix)
+                            if not_consistent:
+                                LOGGER.warn("!! MISSED NON-CONSISTENCY ({}, {}) !!".format(Trace([event]), s_word))
+                                with lock:
+                                    counterexample_result[0] = prefix
+                                found_event.set()
+                                return
+                            else:
+                                not_counter.append(prefix)
+                        else:
+                            not_counter.append(prefix)
+
+       
+        n_threads = 4 
+        
+        # Divide the trace list into chunks for each thread
+        chunk_size = (len(traces) + n_threads - 1) // n_threads
+        trace_chunks = [traces[i:i + chunk_size] for i in range(0, len(traces), chunk_size)]
+
+        with ThreadPoolExecutor(max_workers=n_threads) as executor:
+            futures = [executor.submit(check_trace_group, chunk) for chunk in trace_chunks]
+            for future in as_completed(futures):
+                if found_event.is_set():
+                    break  
+
+        return counterexample_result[0]
+    
+    
+
+    def get_counterexample_SB(self, table: ObsTable):
+        LOGGER.info('Looking for counterexample using Strategy C (parallel + select best)...')
+
+        S = table.get_S()
+        low_S = table.get_low_S()
+        traces: List[Trace] = self.sul.traces
+        not_counter: List[Trace] = []
+
+        # 分块 traces，每个线程处理一个块
+        num_threads = min(8, len(traces))  # 可调线程数
+        trace_chunks = [traces[i::num_threads] for i in range(num_threads)]
+
+        def check_trace_list(trace_list: List[Trace]):
+            for trace in trace_list:
+                for prefix in trace.get_prefixes():
+                    if prefix in S or prefix in low_S:
+                        continue
+
+                    new_row = Row([])
+                    for e_word in table.get_E():
+                        word = prefix + e_word
+                        id_model = self.mi_query(word)
+                        id_distr = self.ht_query(word, id_model, save=False)
+                        new_row.state.append(State([(id_model, id_distr)]))
+
+                    if not new_row.is_populated():
+                        continue
+
+                    not_closed, not_ambiguous = self.not_closed(table, new_row)
+                    if not_closed:
+                        return prefix
+
+                    elif not_ambiguous:
+                        not_consistent, event, s_word = self.not_consistent(table, S, low_S, new_row, prefix)
+                        if not_consistent:
+                            return prefix
+            return None  # 本线程未找到 CE
+
+        # 并行执行
+        results = []
+        with ThreadPoolExecutor(max_workers=num_threads) as executor:
+            future_to_chunk = {executor.submit(check_trace_list, chunk): chunk for chunk in trace_chunks}
+            for future in as_completed(future_to_chunk):
+                ce = future.result()
+                if ce:
+                    results.append(ce)
+
+        if not results:
+            LOGGER.info("No CE found.")
+            return None
+        
+        def count_unique_states(trace: Trace) -> int: # Used to compute the number of unique states triggered by the trace
+            seen = set()
+            for e_word in table.get_E():
+                word = trace + e_word
+                id_model = self.mi_query(word)
+                id_distr = self.ht_query(word, id_model, save=False)
+                if id_model is not None and id_distr is not None:
+                    seen.add((id_model, id_distr))
+            return len(seen)
+
+
+
+        def similarity_with_table(trace: Trace, table: ObsTable):# Calculate the similarity score between the trace and the most similar existing row in the observation table
+
+            row = Row([])
+            for e_word in table.get_E():
+                word = trace + e_word
+                id_model = self.mi_query(word)
+                id_distr = self.ht_query(word, id_model, save=False)
+                row.state.append(State([(id_model, id_distr)]))
+
+            if not row.is_populated():
+                return float('inf')  # 极差的相似度
+
+            S = table.get_S()
+            rows = table.get_upper_observations()
+            min_similarity = float('inf')
+
+            for s, r in zip(S, rows):
+                score = sum(1 for a, b in zip(row.state, r.state) if a == b)
+                min_similarity = min(min_similarity, score)
+
+            return min_similarity
+        
+         # Step 3:  Weighted scoring function
+        def score(trace: Trace):
+            sim_score = similarity_with_table(trace)     # 越小越好
+            unique_states = count_unique_states(trace)   # 越多越好
+            unique_events = len(set(e.symbol for e in trace.events))  # 越多越好
+            length = len(trace)                           # 越短越好
+
+            return (
+                -0.5 * sim_score +
+                1.0 * unique_states +
+                0.8 * unique_events +
+                -0.2 * length
+            )
+        # Select the best counterexample based on the scoring function   
+        best_ce = max(results, key=score)
+
+        # 这个 trace 的行为与当前 ObsTable 中已有 row 最不相似，表示它能产生新信息
+        # Strategy 1: Least similar to existing table rows (maximum new information)
+        best_ce = min(results, key=lambda tr: similarity_with_table(tr, table))
+
+        # 选择最优 CE（策略：最短的）
+        # Strategy 2: The shortest trace
+        best_ce = min(results, key=lambda tr: len(tr))
+        
+        # trace 涉及的唯一状态数量最多，意味着它探索了更多状态空间。
+        # Strategy 3: Maximum unique states triggered
+        best_ce = max(results, key=count_unique_states)
+        
+        # trace 包含的唯一事件 symbol 数量越多，表示更可能触发不同的系统行为。
+        # Strategy 4: Maximum unique event symbols
+        best_ce = max(results, key=lambda tr: len(set(e.symbol for e in tr.events)))
+
+        
+        LOGGER.success(f"Selected best CE among {len(results)} candidates: {best_ce}")
+        return best_ce

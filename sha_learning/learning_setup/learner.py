@@ -1,12 +1,14 @@
 import configparser
 import os
 from typing import List, Tuple, Dict
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from time import time 
 from time import perf_counter
 import copy
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
+import threading
+
 
 
 
@@ -282,7 +284,8 @@ class Learner:
 
         self.obs_table.set_upper_observations(upp_obs)
         self.obs_table.set_lower_observations(low_obs)
-
+        
+    
 
     def merge_loc(self, sha: StochasticHybridAutomaton, loc: Location,
                   event: str, loc_dic: Dict[Trace, str]):
@@ -341,6 +344,8 @@ class Learner:
         self.fill_table()
 
         counterexample = self.TEACHER.get_counterexample(self.obs_table)
+       
+        
 
         while counterexample is not None or step0:
             step0 = False
@@ -348,6 +353,7 @@ class Learner:
             if counterexample is not None:
                 LOGGER.warn('FOUND COUNTEREXAMPLE: {}'.format(counterexample))
                 self.add_counterexample(counterexample)
+                
                 self.fill_table()
 
             if debug_print:
