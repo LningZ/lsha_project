@@ -19,6 +19,8 @@ from sha_learning.learning_setup.learner import Learner
 from sha_learning.learning_setup.logger import Logger
 from sha_learning.learning_setup.teacher import Teacher
 from sha_learning.pltr.energy_pltr import distr_hist
+from sha_learning.trace_loader import load_and_process_all_traces
+
 
 # LEARNING PROCEDURE SETUP
 warnings.filterwarnings('ignore')
@@ -59,6 +61,11 @@ TEACHER = Teacher(SUL)
    
 
 long_traces = [Trace(events=[e]) for e in SUL.events]
+
+#Use 800 traces that we generated in advance
+#long_traces = load_and_process_all_traces("resources/good_traces", TEACHER)
+
+
 obs_table = ObsTable([], [Trace(events=[])], long_traces)
 LEARNER = Learner(TEACHER, obs_table)
 

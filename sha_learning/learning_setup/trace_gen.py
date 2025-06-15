@@ -271,9 +271,11 @@ class TraceGenerator:
             n = random.randint(0, 2 ** 32)
             s = '{}_{}_{}'.format(CS, CS_VERSION, n)
             FNULL = open(os.devnull, 'w')
+
             p = subprocess.Popen([SCRIPT_PATH, UPP_EXE_PATH, UPP_MODEL_PATH,
                                   UPP_QUERY_PATH, str(n), UPP_OUT_PATH.format(s)], stdout=FNULL)
             p.wait()
+            
             if p.returncode == 0:
                 LOGGER.info('TRACES SAVED TO ' + s)
                 # returns out file where new traces are stored

@@ -28,7 +28,7 @@ double Normal(double mean, double stdDev) {
 const int MAX_E = 15;
 bool force_exe = true;
 int curr = 0;
-int force_open[MAX_E] = {0, 0, 0, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1};
+int force_open[MAX_E] = {0, 0, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1};
 
 const int TAU = 200;
 const int R = 10;

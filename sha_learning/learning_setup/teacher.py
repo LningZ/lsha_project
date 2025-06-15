@@ -284,7 +284,7 @@ class Teacher:
     # if so, it samples new traces (through the TraceGenerator)
     # to gain more knowledge about the system under learning
     #############################################
-    def ref_query(self, table: ObsTable):
+    def ref_query(self, table: ObsTable): #parall version
         LOGGER.info('Performing ref query...')
 
         n_resample = int(config['LSHA PARAMETERS']['N_min'])
