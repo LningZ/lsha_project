@@ -211,7 +211,7 @@ class Teacher:
             metrics = [met for met in metrics if met is not None]
             
             if len(metrics) == 0:
-                LOGGER.warning(f"[ht_s_query] No valid metrics for word={word}, flow={flow}. Returning empty distribution.")
+                LOGGER.info(f"[ht_s_query] No valid metrics for word={word}, flow={flow}. Returning empty distribution.")
                 return ProbDistribution(len(self.distributions[0]), {'avg': 0.0})
 
             avg_metrics = sum(metrics) / len(metrics)

@@ -7,7 +7,7 @@ import copy
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
-import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
 
@@ -344,6 +344,8 @@ class Learner:
         self.fill_table()
 
         counterexample = self.TEACHER.get_counterexample(self.obs_table)
+        # counterexample = self.TEACHER.get_counterexample_SA(self.obs_table)
+        # counterexample = self.TEACHER.get_counterexample_SB(self.obs_table)
        
         
 
@@ -390,6 +392,8 @@ class Learner:
                 LOGGER.warn('OBSERVATION TABLE')
                 self.obs_table.print(filter_empty)
             counterexample = self.TEACHER.get_counterexample(self.obs_table)
+            #counterexample = self.TEACHER.get_counterexample_SA(self.obs_table)
+            #counterexample = self.TEACHER.get_counterexample_SB(self.obs_table)
 
         if debug_print:
             LOGGER.info('FINAL OBSERVATION TABLE')

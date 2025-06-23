@@ -50,8 +50,14 @@ RESAMPLE_STRATEGY = config['SUL CONFIGURATION']['RESAMPLE_STRATEGY']
 MAX_E = 15
 LOGGER = Logger('TRACE GENERATOR')
 
+INITIAL_SEED = int(config['TRACE GENERATION'].get('INITIAL_SEED', '10000'))
+
 
 class TraceGenerator:
+   
+    # ← 类属性，所有实例共享
+    next_seed = INITIAL_SEED
+    
     def __init__(self, word: Trace = Trace([]), pov: str = None,
                  start_dt: str = None, end_dt: str = None, start_ts: str = None, end_ts: str = None):
         self.word = word
@@ -60,6 +66,7 @@ class TraceGenerator:
 
         self.ONCE = False
         self.processed_traces: Set[str] = set()
+        
 
         if RESAMPLE_STRATEGY == 'SKG':
             self.labels_hierarchy: List[List[str]] = []
@@ -266,14 +273,19 @@ class TraceGenerator:
         LOGGER.debug('!! GENERATING NEW TRACES FOR: {} !!'.format(self.word))
         new_traces: List[str] = []
 
-        for i in range(n):
-            random.seed()
-            n = random.randint(0, 2 ** 32)
-            s = '{}_{}_{}'.format(CS, CS_VERSION, n)
+        for _ in range(n):
+            #random.seed()
+            # n = random.randint(0, 2 ** 32)
+            
+            seed = TraceGenerator.next_seed# # ← 从类属性里取当前 seed
+            TraceGenerator.next_seed += 1# ← 自增，为下次调用准备
+            LOGGER.info('UPPAAL TRACE GENERATION SEED: ' + str(seed))
+            
+            s = '{}_{}_{}'.format(CS, CS_VERSION, seed)
             FNULL = open(os.devnull, 'w')
 
             p = subprocess.Popen([SCRIPT_PATH, UPP_EXE_PATH, UPP_MODEL_PATH,
-                                  UPP_QUERY_PATH, str(n), UPP_OUT_PATH.format(s)], stdout=FNULL)
+                                  UPP_QUERY_PATH, str(seed), UPP_OUT_PATH.format(s)], stdout=FNULL)
             p.wait()
             
             if p.returncode == 0:
